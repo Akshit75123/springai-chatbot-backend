@@ -24,7 +24,7 @@ public class ConversationalController {
     private ModelService modelService;
 
     @Autowired
-    private ConversationService conversationService;
+    private ChatbotService conversationService;
 
     @PostMapping("/{conversationId}")
     public Map<String, Object> chat(

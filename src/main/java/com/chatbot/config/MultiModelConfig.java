@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 @Configuration
-public class MultiModelConfiguration {
+public class MultiModelConfig {
     @Value("${gemini.api-key}")
     private String geminiApiKey;
 

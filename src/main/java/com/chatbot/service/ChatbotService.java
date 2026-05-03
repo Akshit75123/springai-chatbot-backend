@@ -1,47 +1,49 @@
 package com.chatbot.service;
 
+import com.chatbot.ChatbotApplication;
+import com.chatbot.model.ChatbotHistory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 
-import com.chatbot.model.ChatbotHistory;
+
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
-public class ConversationService {
+public class ChatbotService {
 
-    private final Map<String, ConversationHistory> conversations = new ConcurrentHashMap<>();
+    private final Map<String, ChatbotHistory> conversations = new ConcurrentHashMap<>();
 
     private static final int DEFAULT_TOKEN_LIMIT = 4000;
 
-    public ConversationHistory getConversation(String conversationId) {
+    public ChatbotHistory getConversation(String conversationId) {
         return conversations.computeIfAbsent(
                 conversationId,
-                id -> new ConversationHistory(id)
+                id -> new ChatbotHistory(id)
         );
     }
 
     public void addUserMessage(String conversationId, String content) {
-        ConversationHistory history = getConversation(conversationId);
+        ChatbotHistory history = getConversation(conversationId);
         history.addMessage(new UserMessage(content));
     }
 
     public void addAssistantMessage(String conversationId, String content) {
-        ConversationHistory history = getConversation(conversationId);
+        ChatbotHistory history = getConversation(conversationId);
         history.addMessage(new AssistantMessage(content));
     }
 
     public List<Message> getMessages(String conversationId) {
-        ConversationHistory history = getConversation(conversationId);
+        ChatbotHistory history = getConversation(conversationId);
         return history.getMessages();
     }
 
     public List<Message> getRecentMessages(String conversationId, int maxTokens) {
-        ConversationHistory history = getConversation(conversationId);
+        ChatbotHistory history = getConversation(conversationId);
         return history.getRecentMessages(maxTokens);
     }
 
@@ -54,7 +56,7 @@ public class ConversationService {
     }
 
     public Map<String, Object> getConversationInfo(String conversationId) {
-        ConversationHistory history = conversations.get(conversationId);
+        ChatbotHistory history = conversations.get(conversationId);
 
         if (history == null) {
             return Map.of("exists", false);
