@@ -13,6 +13,8 @@ public class Conversation {
     @Id
     private String id = UUID.randomUUID().toString(); // Consistent with your frontend conversationId
 
+    private String topic = "New Chat";
+
     private LocalDateTime createdAt;
 
     // One Conversation has Many Messages
@@ -24,6 +26,14 @@ public class Conversation {
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
+    }
+
+    public String getTopic() {
+        return topic;
+    }
+
+    public void setTopic(String topic) {
+        this.topic = topic;
     }
 
     public String getId() {
@@ -53,8 +63,9 @@ public class Conversation {
     public Conversation() {
     }
 
-    public Conversation(String id, LocalDateTime createdAt, List<Message> messages) {
+    public Conversation(String id, LocalDateTime createdAt, List<Message> messages,String topic) {
         this.id = id;
+        this.topic=topic;
         this.createdAt = createdAt;
         this.messages = messages;
     }

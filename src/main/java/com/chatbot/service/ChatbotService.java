@@ -34,6 +34,9 @@ public class ChatbotService {
                 .orElseGet(() -> {
                     Conversation newConv = new Conversation();
                     newConv.setId(conversationId);
+                    // Set initial topic from the first message (truncate if too long)
+                    String initialTopic = content.length() > 30 ? content.substring(0, 30) + "..." : content;
+                    newConv.setTopic(initialTopic);
                     return conversationRepository.save(newConv);
                 });
 
@@ -92,11 +95,12 @@ public class ChatbotService {
                 )).orElse(Map.of("exists", false));
     }
 
-    public List<String> listConversations() {
-        // Fetches all conversations and returns just their IDs as a List of Strings
-        return conversationRepository.findAll()
-                .stream()
-                .map(Conversation::getId)
-                .toList();
+    public List<Map<String, String>> listConversations() {
+        return conversationRepository.findAll().stream()
+                .map(conv -> Map.of(
+                        "id", conv.getId(),
+                        "topic", conv.getTopic() != null ? conv.getTopic() : "New Chat"
+                ))
+                .collect(Collectors.toList());
     }
 }
