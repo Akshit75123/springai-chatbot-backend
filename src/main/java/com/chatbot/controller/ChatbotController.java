@@ -16,9 +16,9 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/conversation")
-public class ConversationalController {
+public class ChatbotController {
 
-    private static final Logger log = LoggerFactory.getLogger(ConversationalController.class);
+    private static final Logger log = LoggerFactory.getLogger(ChatbotController.class);
 
     @Autowired
     private ModelService modelService;
