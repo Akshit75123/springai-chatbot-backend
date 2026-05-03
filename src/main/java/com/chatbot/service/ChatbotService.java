@@ -1,78 +1,102 @@
 package com.chatbot.service;
 
-import com.chatbot.ChatbotApplication;
-import com.chatbot.model.ChatbotHistory;
+import com.chatbot.model.Conversation;
+import com.chatbot.model.Message;
+import com.chatbot.repository.ConversationRepository;
+import com.chatbot.repository.MessageRepository;
+import jakarta.transaction.Transactional;
+
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 
-
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class ChatbotService {
 
-    private final Map<String, ChatbotHistory> conversations = new ConcurrentHashMap<>();
+    @Autowired
+    private ConversationRepository conversationRepository;
+
+    @Autowired
+    private MessageRepository messageRepository;
 
     private static final int DEFAULT_TOKEN_LIMIT = 4000;
 
-    public ChatbotHistory getConversation(String conversationId) {
-        return conversations.computeIfAbsent(
-                conversationId,
-                id -> new ChatbotHistory(id)
-        );
+    @Transactional
+    public void saveMessage(String conversationId, String role, String content) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseGet(() -> {
+                    Conversation newConv = new Conversation();
+                    newConv.setId(conversationId);
+                    return conversationRepository.save(newConv);
+                });
+
+        com.chatbot.model.Message jpaMessage = new com.chatbot.model.Message();
+        jpaMessage.setRole(role);
+        jpaMessage.setContent(content);
+        jpaMessage.setConversation(conversation);
+
+        messageRepository.save(jpaMessage);
     }
 
-    public void addUserMessage(String conversationId, String content) {
-        ChatbotHistory history = getConversation(conversationId);
-        history.addMessage(new UserMessage(content));
+    public List<org.springframework.ai.chat.messages.Message> getRecentMessages(String conversationId, int maxTokens) {
+        // 1. Fetch full history for this session from PostgreSQL
+        List<com.chatbot.model.Message> allMessages = messageRepository.findByConversationIdOrderByTimestampAsc(conversationId);
+
+        List<org.springframework.ai.chat.messages.Message> recentMessages = new ArrayList<>();
+        int currentTokens = 0;
+
+        // 2. Apply your sliding window logic (iterating backwards)
+        for (int i = allMessages.size() - 1; i >= 0; i--) {
+            com.chatbot.model.Message dbMsg = allMessages.get(i);
+            int msgTokens = dbMsg.getContent().length() / 4;
+
+            if (currentTokens + msgTokens > maxTokens) {
+                break;
+            }
+
+            // Convert DB entity to Spring AI Message type
+            org.springframework.ai.chat.messages.Message aiMsg = "user".equalsIgnoreCase(dbMsg.getRole())
+                    ? new UserMessage(dbMsg.getContent())
+                    : new AssistantMessage(dbMsg.getContent());
+
+            recentMessages.add(0, aiMsg);
+            currentTokens += msgTokens;
+        }
+
+        return recentMessages;
     }
 
-    public void addAssistantMessage(String conversationId, String content) {
-        ChatbotHistory history = getConversation(conversationId);
-        history.addMessage(new AssistantMessage(content));
-    }
-
-    public List<Message> getMessages(String conversationId) {
-        ChatbotHistory history = getConversation(conversationId);
-        return history.getMessages();
-    }
-
-    public List<Message> getRecentMessages(String conversationId, int maxTokens) {
-        ChatbotHistory history = getConversation(conversationId);
-        return history.getRecentMessages(maxTokens);
-    }
-
-    public List<Message> getRecentMessages(String conversationId) {
+    public List<org.springframework.ai.chat.messages.Message> getRecentMessages(String conversationId) {
         return getRecentMessages(conversationId, DEFAULT_TOKEN_LIMIT);
     }
 
+    @Transactional
     public void clearConversation(String conversationId) {
-        conversations.remove(conversationId);
+        conversationRepository.deleteById(conversationId);
     }
 
     public Map<String, Object> getConversationInfo(String conversationId) {
-        ChatbotHistory history = conversations.get(conversationId);
-
-        if (history == null) {
-            return Map.of("exists", false);
-        }
-
-        return Map.of(
-                "exists", true,
-                "conversationId", history.getConversationId(),
-                "messageCount", history.getMessageCount(),
-                "totalTokens", history.getTotalTokens(),
-                "createdAt", history.getCreatedAt().toString(),
-                "updatedAt", history.getUpdatedAt().toString()
-        );
+        return conversationRepository.findById(conversationId)
+                .map(conv -> Map.<String, Object>of( // Explicitly define <String, Object>
+                        "exists", true,
+                        "conversationId", conv.getId(),
+                        "messageCount", conv.getMessages().size(),
+                        "createdAt", conv.getCreatedAt().toString()
+                )).orElse(Map.of("exists", false));
     }
 
     public List<String> listConversations() {
-        return conversations.keySet().stream().toList();
+        // Fetches all conversations and returns just their IDs as a List of Strings
+        return conversationRepository.findAll()
+                .stream()
+                .map(Conversation::getId)
+                .toList();
     }
 }

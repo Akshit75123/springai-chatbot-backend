@@ -1,7 +1,5 @@
 package com.chatbot.model;
 
-
-
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -12,8 +10,6 @@ public class Message {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    private String conversationId;
     private String role;
 
     @Column(columnDefinition = "TEXT") // Important for long AI responses
@@ -21,7 +17,19 @@ public class Message {
 
     private LocalDateTime timestamp = LocalDateTime.now();
 
+    @ManyToOne(fetch = FetchType.LAZY) // Keeps your app fast by not loading the whole conversation unless needed
+    @JoinColumn(name = "conversation_id", nullable = false) // Defines the actual column in PostgreSQL
+    private Conversation conversation;
+
     // Getters and Setters
+
+    public Conversation getConversation() {
+        return conversation;
+    }
+
+    public void setConversation(Conversation conversation) {
+        this.conversation = conversation;
+    }
 
     public Long getId() {
         return id;
@@ -31,13 +39,6 @@ public class Message {
         this.id = id;
     }
 
-    public String getConversationId() {
-        return conversationId;
-    }
-
-    public void setConversationId(String conversationId) {
-        this.conversationId = conversationId;
-    }
 
     public String getRole() {
         return role;
@@ -63,12 +64,12 @@ public class Message {
         this.timestamp = timestamp;
     }
 
-    public Message(Long id, String conversationId, String role, String content, LocalDateTime timestamp) {
+    public Message(Long id, String role, String content, LocalDateTime timestamp, Conversation conversation) {
         this.id = id;
-        this.conversationId = conversationId;
         this.role = role;
         this.content = content;
         this.timestamp = timestamp;
+        this.conversation = conversation;
     }
 
     public Message() {

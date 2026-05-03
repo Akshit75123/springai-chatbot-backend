@@ -1,7 +1,5 @@
 package com.chatbot.controller;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -14,11 +12,11 @@ import com.chatbot.service.ModelService;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.web.bind.annotation.*;
+
 @RestController
 @RequestMapping("/api/conversation")
 public class ChatbotController {
-
-    private static final Logger log = LoggerFactory.getLogger(ChatbotController.class);
 
     @Autowired
     private ModelService modelService;
@@ -33,30 +31,25 @@ public class ChatbotController {
             @RequestHeader(value = "AI-Model", required = false) String model,
             @RequestBody String message
     ) {
-
-        if (!"openai".equalsIgnoreCase(provider) &&
-                (model == null || model.isEmpty())) {
+        // 1. Validation for specific providers
+        if (!"openai".equalsIgnoreCase(provider) && (model == null || model.isEmpty())) {
             return Map.of(
                     "error", true,
                     "message", "AI-Model header is required when using provider: " + provider
             );
         }
 
-        conversationService.addUserMessage(conversationId, message);
+        // 2. Persist the User Message to PostgreSQL
+        conversationService.saveMessage(conversationId, "user", message);
 
+        // 3. Retrieve the sliding window history (formatted for Spring AI)
         List<Message> history = conversationService.getRecentMessages(conversationId);
 
-//        log.info("=== REQUEST RECEIVED ===");
-//        log.info("Provider: {}", provider);
-//        log.info("Model header: {}", model);
-//        log.info("Message: {}", message);
-
+        // 4. Initialize the requested ChatClient
         ChatClient chatClient = modelService.getChatClient(provider);
-//        log.info("ChatClient class: {}", chatClient.getClass().getName());
-//        log.info("ChatClient: {}", chatClient);
-
         var promptSpec = chatClient.prompt().messages(history);
 
+        // 5. Apply dynamic model options if provided
         if (model != null && !model.isEmpty()) {
             promptSpec = promptSpec.options(
                     OpenAiChatOptions.builder()
@@ -66,32 +59,27 @@ public class ChatbotController {
             );
         }
 
-//        log.info("Using default model from ChatClient bean");
-//        log.info("=== CALLING PROMPT ===");
-
+        // 6. Execute the AI call
         ChatResponse response = promptSpec.call().chatResponse();
         String aiResponse = response.getResult().getOutput().getText();
 
-//        log.info("aiResponse = "+ aiResponse);
+        // 7. Persist the AI Response to PostgreSQL
+        conversationService.saveMessage(conversationId, "assistant", aiResponse);
 
-        conversationService.addAssistantMessage(conversationId, aiResponse);
-
+        // 8. Return data for the React frontend
+        Map<String, Object> info = conversationService.getConversationInfo(conversationId);
         return Map.of(
                 "conversationId", conversationId,
                 "response", aiResponse,
-                "messageCount", conversationService.getConversationInfo(conversationId).get("messageCount"),
-                "totalTokens", conversationService.getConversationInfo(conversationId).get("totalTokens")
+                "messageCount", info.getOrDefault("messageCount", 0),
+                "totalTokens", info.getOrDefault("totalTokens", 0) // Ensure Service tracks this if needed
         );
-    }
-
-    @GetMapping("/{conversationId}/info")
-    public Map<String, Object> getInfo(@PathVariable String conversationId) {
-        return conversationService.getConversationInfo(conversationId);
     }
 
     @GetMapping("/{conversationId}/history")
     public Map<String, Object> getHistory(@PathVariable String conversationId) {
-        List<Message> messages = conversationService.getMessages(conversationId);
+        // Fetches full history from DB for initial frontend load
+        List<Message> messages = conversationService.getRecentMessages(conversationId, Integer.MAX_VALUE);
 
         return Map.of(
                 "conversationId", conversationId,
@@ -104,11 +92,16 @@ public class ChatbotController {
         );
     }
 
+    @GetMapping("/{conversationId}/info")
+    public Map<String, Object> getInfo(@PathVariable String conversationId) {
+        return conversationService.getConversationInfo(conversationId);
+    }
+
     @DeleteMapping("/{conversationId}")
     public Map<String, Object> clearConversation(@PathVariable String conversationId) {
         conversationService.clearConversation(conversationId);
         return Map.of(
-                "message", "Conversation cleared",
+                "message", "Conversation deleted from database",
                 "conversationId", conversationId
         );
     }
