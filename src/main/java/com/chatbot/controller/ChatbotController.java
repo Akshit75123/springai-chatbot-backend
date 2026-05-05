@@ -3,6 +3,7 @@ package com.chatbot.controller;
 import org.springframework.ai.chat.client.ChatClient;
 
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import com.chatbot.service.ChatbotService;
 import com.chatbot.service.ModelService;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -33,48 +35,54 @@ public class ChatbotController {
             @RequestHeader(value = "AI-Model", required = false) String model,
             @RequestBody String message
     ) {
-        // 1. Validation for specific providers
+        // 1. Validation (remains the same)
         if (!"openai".equalsIgnoreCase(provider) && (model == null || model.isEmpty())) {
-            return Map.of(
-                    "error", true,
-                    "message", "AI-Model header is required when using provider: " + provider
-            );
+            return Map.of("error", true, "message", "AI-Model header is required.");
         }
 
-        // 2. Persist the User Message to PostgreSQL
+        // 2. Persist User Message (remains the same)
         conversationService.saveMessage(conversationId, "user", message);
 
-        // 3. Retrieve the sliding window history (formatted for Spring AI)
-        List<Message> history = conversationService.getRecentMessages(conversationId);
+        // 3. Prepare the Minimalist Template
+        // This SystemMessage acts as the template to limit the AI's verbosity
+        SystemMessage minimalistTemplate =
+                new SystemMessage("""
+            You are a minimalist assistant. 
+            Provide only the essential information requested. 
+            Avoid long explanations, greetings, or filler text.
+            Reply in 3 sentences or fewer.
+        """);
 
-        // 4. Initialize the requested ChatClient
+        // 4. Retrieve History and prepend the Template
+        List<Message> messages = new ArrayList<>();
+        messages.add(minimalistTemplate); // Template goes first
+        messages.addAll(conversationService.getRecentMessages(conversationId));
+
+        // 5. Initialize ChatClient
         ChatClient chatClient = modelService.getChatClient(provider);
-        var promptSpec = chatClient.prompt().messages(history);
 
-        // 5. Apply dynamic model options if provided
-        if (model != null && !model.isEmpty()) {
-            promptSpec = promptSpec.options(
-                    OpenAiChatOptions.builder()
-                            .model(model)
-                            .temperature(1.0)
-                            .build()
-            );
-        }
+        // 6. Execute with strict Token Limits and Temperature
+        ChatResponse response = chatClient.prompt()
+                .messages(messages)
+                .options(OpenAiChatOptions.builder()
+                        .model(model != null ? model : "gemini-2.5-flash")
+                        .temperature(1.0)  // Lower temperature reduces wordiness
+//                        .maxTokens(150)    // Strict limit on response length
+                        .build())
+                .call()
+                .chatResponse();
 
-        // 6. Execute the AI call
-        ChatResponse response = promptSpec.call().chatResponse();
         String aiResponse = response.getResult().getOutput().getText();
 
-        // 7. Persist the AI Response to PostgreSQL
+        // 7. Persist AI Response (remains the same)
         conversationService.saveMessage(conversationId, "assistant", aiResponse);
 
-        // 8. Return data for the React frontend
+        // 8. Return data
         Map<String, Object> info = conversationService.getConversationInfo(conversationId);
         return Map.of(
                 "conversationId", conversationId,
                 "response", aiResponse,
-                "messageCount", info.getOrDefault("messageCount", 0),
-                "totalTokens", info.getOrDefault("totalTokens", 0) // Ensure Service tracks this if needed
+                "messageCount", info.getOrDefault("messageCount", 0)
         );
     }
 
