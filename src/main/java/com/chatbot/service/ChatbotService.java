@@ -80,11 +80,6 @@ public class ChatbotService {
         return getRecentMessages(conversationId, DEFAULT_TOKEN_LIMIT);
     }
 
-    @Transactional
-    public void clearConversation(String conversationId) {
-        conversationRepository.deleteById(conversationId);
-    }
-
     public Map<String, Object> getConversationInfo(String conversationId) {
         return conversationRepository.findById(conversationId)
                 .map(conv -> Map.<String, Object>of( // Explicitly define <String, Object>
@@ -102,5 +97,19 @@ public class ChatbotService {
                         "topic", conv.getTopic() != null ? conv.getTopic() : "New Chat"
                 ))
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void clearConversation(String conversationId) {
+        // 1. Check if the conversation exists to avoid unnecessary operations
+        if (conversationRepository.existsById(conversationId)) {
+
+            // 2. Delete messages first to satisfy foreign key constraints
+            // (Only needed if CascadeType.REMOVE is not set in the Conversation Entity)
+            messageRepository.deleteByConversationId(conversationId);
+
+            // 3. Delete the conversation record
+            conversationRepository.deleteById(conversationId);
+        }
     }
 }

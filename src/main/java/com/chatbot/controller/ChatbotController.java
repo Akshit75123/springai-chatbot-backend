@@ -1,10 +1,12 @@
 package com.chatbot.controller;
 
 import org.springframework.ai.chat.client.ChatClient;
+
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.chatbot.service.ChatbotService;
 import com.chatbot.service.ModelService;
@@ -97,19 +99,29 @@ public class ChatbotController {
         return conversationService.getConversationInfo(conversationId);
     }
 
-    @DeleteMapping("/{conversationId}")
-    public Map<String, Object> clearConversation(@PathVariable String conversationId) {
-        conversationService.clearConversation(conversationId);
-        return Map.of(
-                "message", "Conversation deleted from database",
-                "conversationId", conversationId
-        );
-    }
-
     @GetMapping("/list")
     public Map<String, Object> listConversations() {
         return Map.of(
                 "conversations", conversationService.listConversations()
         );
+    }
+    @DeleteMapping("/{conversationId}")
+    public ResponseEntity<Map<String, Object>> deleteConversation(@PathVariable String conversationId) {
+        try {
+            // Call the service to remove messages and metadata from PostgreSQL
+            conversationService.clearConversation(conversationId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Conversation " + conversationId + " successfully deleted",
+                    "conversationId", conversationId
+            ));
+        } catch (Exception e) {
+            // If the ID doesn't exist or a DB error occurs
+            return ResponseEntity.status(500).body(Map.of(
+                    "success", false,
+                    "message", "Error deleting conversation: " + e.getMessage()
+            ));
+        }
     }
 }
